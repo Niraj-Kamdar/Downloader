@@ -1,18 +1,18 @@
 from kivy.app import App
 from kivy.properties import ObjectProperty
 from kivy.uix.popup import Popup
+from kivy.uix.scrollview import ScrollView
 from kivy.lang import Builder
 from kivy.uix.gridlayout import GridLayout
+from multiprocessing import Pipe, Process
+from kivy.clock import Clock
 import webbrowser
 import mechanize
 import subprocess
 import time
-c = 0
-filetypes = [".pdf", ".doc", ".docx", ".xls", ".xlsx", ".jpg", ".png",
-             ".ppt", ".pptx", ".zip", ".rar", ".txt", ".rtf", ".mp3", ".mkv",
-             ".mp4", ".webm", ".ogg", ".3gp", ".avi", ".mov", ".gif", ".psd",
-             ".7z", ".c", ".cpp", ".py", ".java", ".epub", ".sh", ".bmp",
-             ".exe", ".tar"]
+import json
+import ctypes
+import os
 
 
 def encrypter(msg_text, secret_key):
@@ -46,6 +46,7 @@ def decrypter(encrypted_text, secret_key):
     n = m//key
     i = 0
     j = key
+    # decryption
     for a in range(n):
         temp2.append(encrypted_text[i:j])
         i = i + key
@@ -63,20 +64,22 @@ def decrypter(encrypted_text, secret_key):
     return decrypted_1
 
 
-def main(select, download, path, username=None, password=None):
+def main(conn, select, download, path, username=None, password=None):
+
     br = mechanize.Browser()
-    # br.set_handle_equiv(False)
-    # br.set_handle_robots(False)
-    # br.set_handle_referer(False)
-    # br.set_handle_refresh(False)
 
     def downloader(download, p):
-        global filetypes
+        filetypes = [".pdf", ".doc", ".docx", ".xls", ".xlsx", ".jpg", ".png",
+                     ".ppt", ".pptx", ".zip", ".rar", ".txt", ".rtf", ".mp3",
+                     ".mp4", ".webm", ".ogg", ".3gp", ".avi", ".mov", ".gif",
+                     ".7z", ".c", ".cpp", ".py", ".java", ".epub", ".sh",
+                     ".exe", ".tar", ".mkv", ".psd", ".bmp", ]
         try:
             print(download)
             br.open(download)
         except Exception as e:
             print(e)
+            conn.send("error"+str(e))
             return
         myfiles = []
         mydir = []
@@ -101,14 +104,14 @@ def main(select, download, path, username=None, password=None):
                 pass
             downloader(link.absolute_url,
                        p + '\\' + link.text[:n-1])
+        return
 
     def c_downloader(download, p):
-        global filetypes
         try:
             br.open(download)
         except Exception as e:
             print(e)
-            return
+            conn.send("error"+str(e))
         for link in br.links():
             if ".pdf" in link.text.lower():
                 downloadlink(link, p)
@@ -116,7 +119,6 @@ def main(select, download, path, username=None, password=None):
                 downloadlink(link, p, False)
 
     def downloadlink(l, po, select=True):
-        global c
         if not l.text:
             return
         if select:
@@ -131,15 +133,13 @@ def main(select, download, path, username=None, password=None):
             br.open(l.absolute_url)
             f.write(br.response().read())
             print(l.text + " downloaded")
-            c = c + 1
+            conn.send(l.text + " downloaded")
+            return
         except Exception as e:
             print(e)
+            conn.send("error"+str(e))
             return
 
-    print("Mass download files and folders from Intranet and Courses")
-    print("Note: if you enter wrong password for courses it won't download.")
-    print("Note: To reset password delete 'pass.json' file.")
-    print("Note: it won't download embedded PDF file of courses.")
     if select == 'c':
         br.open("https://courses.daiict.ac.in/login/index.php")
         br.select_form(nr=0)
@@ -147,14 +147,22 @@ def main(select, download, path, username=None, password=None):
         br.form['password'] = password
         br.submit()
         print("you have succesfully login into your account.")
+        conn.send("you have succesfully login into your account.")
+
     print("please wait if you don't see any error it's downloading.")
+    conn.send("please wait if you don't see any error it's downloading.")
+
     t1 = time.perf_counter()
     if select != 'c':
+        print("hi")
         downloader(download, path)
     else:
+        print("c hi")
         c_downloader(download, path)
     t2 = time.perf_counter()
-    print("{} files downloaded in {} seconds!".format(c, round(t2 - t1, 2)))
+
+    print("{}".format(round(t2-t1, 2)))
+    conn.send("end")
     return
 
 
@@ -185,6 +193,11 @@ Builder.load_string('''
             on_state:
                 if self.state == 'normal': root.intranet()
                 else: root.courses()
+        Button:
+            text: "Help"
+            on_release: root.show_help()
+            size_hint: (0.32, 1)
+            font_size: (root.width**2 + root.height**2) / 14**4
         Label:
             text: ''
     BoxLayout:
@@ -257,11 +270,11 @@ Builder.load_string('''
         Label:
             text: 'Username:'
             size_hint: (0.20,1)
-            font_size: 18
+            font_size: (root.width**2 + root.height**2) / 14**4
         TextInput:
             id: username
             multiline: False
-            font_size: 18
+            font_size: (root.width**2 + root.height**2) / 14**4
     BoxLayout:
         orientation: 'horizontal'
         size_hint: (1,0.30)
@@ -269,11 +282,11 @@ Builder.load_string('''
         Label:
             text: 'Password:'
             size_hint: (0.20,1)
-            font_size: 18
+            font_size: (root.width**2 + root.height**2) / 14**4
         TextInput:
             id: password
             multiline: False
-            font_size: 18
+            font_size: (root.width**2 + root.height**2) / 14**4
             password: True
     BoxLayout:
         orientation: 'horizontal'
@@ -289,16 +302,38 @@ Builder.load_string('''
         Label:
             text: ''
 
-<P>:
+<Downloading>:
+    set_text: newtext
     Label:
-        text: "You pressed the button"
-        size_hint: 0.6, 0.2
-        pos_hint: {"x":0.2, "top":1}
-
-    Button:
-        text: "You pressed the button"
-        size_hint: 0.8, 0.2
-        pos_hint: {"x":0.1, "y":0.1}
+        id: newtext
+        text: ""
+        font_size: (root.width**2 + root.height**2) / 14**4
+        text_size: self.width, None
+        size_hint_y: None
+        height: self.texture_size[1]
+<HelpPage>:
+    rows: 2
+    padding: 8
+    set_help: help
+    Label:
+        id: help
+        font_size: 18
+        text_size: self.width, None
+        size_hint_y: None
+        height: self.texture_size[1]
+    BoxLayout:
+        orientation: 'horizontal'
+        padding: 5
+        Label:
+            text: ''
+        Button:
+            text: "Okay"
+            on_release: root.close_help()
+            size_hint: (0.70,0.20)
+            pos_hint: ({'x':self.x,'y':0.6})
+            font_size: 20
+        Label:
+            text: ''
 ''')
 
 
@@ -307,15 +342,82 @@ class LoginPage(GridLayout):
     get_username = ObjectProperty()
 
     def on_submit(self):
+        print(self.get_username.text, self.get_password.text)
         pass
+
+
+class HelpPage(GridLayout):
+    set_help = ObjectProperty()
+
+    def __init__(self):
+        help_texts = ("Support for courses is coming soon...\n" +
+                      "This App downloads whole directory from Courses and " +
+                      "Intranet.\nOfcourse, to download file from courses " +
+                      "you have to login once. " +
+                      "\nYour username and password will be stored in the "
+                      "encrypted form.\nIf you enter wrong password" +
+                      " it won't download any file." +
+                      "\nYou can reset your password anytime " +
+                      "using login button.\n" +
+                      "If you find any bug or error in the App " +
+                      "you can email me on 201701184@daiict.ac.in\n" +
+                      "Known bug: It freezes while downloading big files.")
+
+        super().__init__()
+
+        self.set_help.text = help_texts
+
+    def close_help(self):
+        pass
+
+
+class Downloading(ScrollView):
+    set_text = ObjectProperty()
+
+    def __init__(self, select, link, path, username, password):
+
+        self.select = select
+        self.link = link
+        self.path = path
+        self.username = username
+        self.password = password
+
+        self.parent_conn, self.child_conn = Pipe()
+
+        p = Process(target=main, args=(self.child_conn, self.select,
+                                       self.link, self.path,
+                                       self.username, self.password))
+        p.start()
+
+        super().__init__()
+
+        self.event = Clock.schedule_interval(self.download_GUI, 1)
+
+    def download_GUI(self, a):
+
+        temp = self.parent_conn.recv()
+
+        print(temp)
+        if temp == "end":
+            self.event.cancel()
+            Clock.schedule_once(exit, 3)
+        else:
+            self.set_text.text += temp + '\n'
 
 
 class Widgets(GridLayout):
     set_path = ObjectProperty()
     set_link = ObjectProperty()
     set_select = ObjectProperty()
-    username = None
-    password = None
+    try:
+        with open("password.json", "r") as f:
+            saved_data = json.load(f)
+        username = decrypter(saved_data['username'], '836')
+        password = decrypter(saved_data['password'], '836')
+    except Exception:
+        username = None
+        password = None
+
     select = 'i'
 
     def intranet(self):
@@ -336,11 +438,19 @@ class Widgets(GridLayout):
         webbrowser.open("http://intranet.daiict.ac.in")
 
     def downloader(self):
+
         path = self.set_path.text
         link = self.set_link.text
-        main(self.select, link, path, self.username, self.password)
+        d_popup = Downloading(self.select, link, path,
+                              self.username, self.password)
+
+        popupWindow = Popup(title="Downloading...",
+                            content=d_popup,
+                            size_hint=(1, 1))
+        popupWindow.open()
 
     def show_popup(self):
+
         subprocess.Popen(r'explorer /select,"C:\"')
 
     def show_login(self):
@@ -348,25 +458,58 @@ class Widgets(GridLayout):
         def close():
             self.username = login.get_username.text
             self.password = login.get_password.text
+            write_hidden()
             popupWindow.dismiss()
+
+        def write_hidden():
+
+            data = {}
+            data['username'] = encrypter(self.username, '836')
+            data['password'] = encrypter(self.password, '836')
+            HIDDEN = 0x02
+            file_name = "password.json"
+
+            prefix = '.' if os.name != 'nt' else ''
+            file_name = prefix + file_name
+
+            with open(file_name, 'w') as f:
+                json.dump(data, f)
+
+            if os.name == 'nt':
+                ret = ctypes.windll.kernel32.SetFileAttributesW(file_name,
+                                                                HIDDEN)
+                if not ret:
+                    raise ctypes.WinError()
 
         login = LoginPage()
 
         login.on_submit = close
 
-        popupWindow = Popup(title="Login credential for courses", content=login,
-                            size_hint=(None, None), size=(700, 500))
+        popupWindow = Popup(title="Login credential for courses",
+                            content=login,
+                            size_hint=(0.8, 0.8))
+        popupWindow.open()
+
+    def show_help(self):
+
+        def close_popup():
+
+            popupWindow.dismiss()
+
+        help_page = HelpPage()
+
+        help_page.close_help = close_popup
+
+        popupWindow = Popup(title="Login credential for courses",
+                            content=help_page,
+                            size_hint=(0.8, 0.8))
         popupWindow.open()
 
 
-class login(GridLayout):
-    pass
-
-
-class Intranet_DownloaderApp(App):
+class DownloaderApp(App):
     def build(self):
         return Widgets()
 
 
 if __name__ == "__main__":
-    Intranet_DownloaderApp().run()
+    DownloaderApp().run()
