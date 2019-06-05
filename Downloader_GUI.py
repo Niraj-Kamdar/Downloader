@@ -3,6 +3,10 @@ from kivy.properties import ObjectProperty
 from kivy.uix.popup import Popup
 from kivy.uix.scrollview import ScrollView
 from kivy.lang import Builder
+from os.path import sep, expanduser, isdir, dirname, join
+from kivy.garden.filebrowser import FileBrowser
+from kivy.properties import BooleanProperty
+from kivy.utils import platform
 from kivy.uix.gridlayout import GridLayout
 from multiprocessing import Pipe, Process
 from kivy.clock import Clock
@@ -107,13 +111,16 @@ def main(conn, select, download, path, username=None, password=None):
         return
 
     def c_downloader(download, p):
+        print(download)
         try:
+            print("wtf")
             br.open(download)
         except Exception as e:
             print(e)
             conn.send("error"+str(e))
         for link in br.links():
             if ".pdf" in link.text.lower():
+                print(link.text)
                 downloadlink(link, p)
             elif " File" in link.text:
                 downloadlink(link, p, False)
@@ -158,6 +165,7 @@ def main(conn, select, download, path, username=None, password=None):
         downloader(download, path)
     else:
         print("c hi")
+        print(download)
         c_downloader(download, path)
     t2 = time.perf_counter()
 
@@ -350,8 +358,7 @@ class HelpPage(GridLayout):
     set_help = ObjectProperty()
 
     def __init__(self):
-        help_texts = ("Support for courses is coming soon...\n" +
-                      "This App downloads whole directory from Courses and " +
+        help_texts = ("This App downloads whole directory from Courses and " +
                       "Intranet.\nOfcourse, to download file from courses " +
                       "you have to login once. " +
                       "\nYour username and password will be stored in the "
@@ -360,8 +367,7 @@ class HelpPage(GridLayout):
                       "\nYou can reset your password anytime " +
                       "using login button.\n" +
                       "If you find any bug or error in the App " +
-                      "you can email me on 201701184@daiict.ac.in\n" +
-                      "Known bug: It freezes while downloading big files.")
+                      "you can email me on 201701184@daiict.ac.in")
 
         super().__init__()
 
@@ -409,6 +415,7 @@ class Widgets(GridLayout):
     set_path = ObjectProperty()
     set_link = ObjectProperty()
     set_select = ObjectProperty()
+    select = 'i'
     try:
         with open("password.json", "r") as f:
             saved_data = json.load(f)
@@ -417,8 +424,6 @@ class Widgets(GridLayout):
     except Exception:
         username = None
         password = None
-
-    select = 'i'
 
     def intranet(self):
         self.set_select.text = "Intranet"
@@ -435,7 +440,10 @@ class Widgets(GridLayout):
         print(self.set_path.text)
 
     def webbrowse(self):
-        webbrowser.open("http://intranet.daiict.ac.in")
+        if self.select == 'i':
+            webbrowser.open("http://intranet.daiict.ac.in")
+        else:
+            webbrowser.open("http://courses.daiict.ac.in/")
 
     def downloader(self):
 
@@ -451,7 +459,34 @@ class Widgets(GridLayout):
 
     def show_popup(self):
 
-        subprocess.Popen(r'explorer /select,"C:\"')
+        def _fbrowser_success(instance):
+            print(instance.selection)
+            self.set_path.text = instance.selection[0]
+            popupWindow.dismiss()
+
+        def _fbrowser_canceled(instance):
+            print('cancelled, Close self.')
+
+        def is_dir(directory, filename):
+            return isdir(join(directory, filename))
+
+        if platform == 'win':
+            user_path = dirname(expanduser('~')) + sep + 'Documents'
+        else:
+            user_path = expanduser('~') + sep + 'Documents'
+        browser = FileBrowser(select_string='Select',
+                              favorites=[(user_path, 'Documents')],
+                              dirselect=BooleanProperty(False),
+                              filters=[is_dir]
+                              )
+        browser.bind(
+            on_success=_fbrowser_success,
+            on_canceled=_fbrowser_canceled)
+
+        popupWindow = Popup(title="Choose A Directory", content=browser,
+                            size_hint=(1, 1))
+
+        popupWindow.open()
 
     def show_login(self):
 
