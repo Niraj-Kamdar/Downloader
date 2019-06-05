@@ -18,25 +18,28 @@ def downloader(download, p):
     try:
         br.open(download)
     except Exception as e:
-        s = str(e).split("'")
-        lenth = len(s[0])
-        s[0] = s[0][:lenth-1]
-        for i in s:
-            print(i, end="")
-        print()
+        if "b'" in e:
+            s = str(e).split("'")
+            lenth = len(s[0])
+            s[0] = s[0][:lenth-1]
+            for i in s:
+                print(i, end="")
+            print()
+        else:
+            print(e)
         return
     myfiles = []
     mydir = []
     for link in br.links():
-        # print(link.text)
         for type in filetypes:
-            if type in str(link).lower():
+            if type in link.text.lower():
                 myfiles.append(link)
         if(link.text):
             if link.text[-1] == "/":
-                mydir.append(link)
+                if link.text[-2] != '.':
+                    mydir.append(link)
     for link in myfiles:
-        downloadlink(download, link, p)
+        downloadlink(link, p)
     for link in mydir:
         n = len(link.text)
         try:
@@ -49,14 +52,40 @@ def downloader(download, p):
                    p + '\\' + link.text[:n-1])
 
 
-def downloadlink(d, l, po):
+def c_downloader(download, p):
+    global filetypes
+    try:
+        br.open(download)
+    except Exception as e:
+        if "b'" in e:
+            s = str(e).split("'")
+            lenth = len(s[0])
+            s[0] = s[0][:lenth-1]
+            for i in s:
+                print(i, end="")
+            print()
+        else:
+            print(e)
+        return
+    for link in br.links():
+        if ".pdf" in link.text.lower():
+            downloadlink(link, p)
+        elif " File" in link.text:
+            downloadlink(link, p, False)
+
+
+def downloadlink(l, po, select=True):
     global c
     if not l.text:
         return
-    if po[-1] == '\\':
-        f = open(po + l.text, "wb")
+    if select:
+        if po[-1] == '\\':
+            f = open(po + l.text, "wb")
+        else:
+            f = open(po + '\\' + l.text, "wb")
     else:
-        f = open(po + '\\' + l.text, "wb")
+        n = len(l.text)
+        f = open(po + '\\' + l.text[:n-5] + ".pdf", "wb")
     try:
         br.open(l.absolute_url)
         f.write(br.response().read())
@@ -127,12 +156,17 @@ if __name__ == '__main__':
     c = 0
     skey = "836"
     br = mechanize.Browser()
-    print("Mass download files and folders from Intranet")
+    # br.set_handle_equiv(False)
+    # br.set_handle_robots(False)
+    # br.set_handle_referer(False)
+    # br.set_handle_refresh(False)
+    print("Mass download files and folders from Intranet and Courses")
     print("Note: if you enter wrong password for courses it won't download.")
-    print("Note: it won't download files without extention.")
-    print("Note: download from courses takes a while")
+    print("Note: To reset password delete 'pass.json' file.")
+    print("Note: it won't download embedded PDF file of courses.")
     print("\n\n")
-    select = input("Intranet or Courses (i) for intranet and 'c' for courses ")
+    select = input(
+        "Intranet or Courses (i) for intranet and 'c' for courses ") or 'i'
     if select.lower() == 'c':
         try:
             with open("pass.json", "r") as f:
@@ -162,7 +196,10 @@ if __name__ == '__main__':
         "please input folder path location where you want to store data: \n")
     print("please wait if you don't see any error it's downloading.")
     t1 = time.perf_counter()
-    downloader(download, path)
+    if select.lower() != 'c':
+        downloader(download, path)
+    else:
+        c_downloader(download, path)
     t2 = time.perf_counter()
     print("\n\n")
     print("{} files downloaded in {} seconds!".format(c, round(t2 - t1, 2)))
