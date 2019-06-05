@@ -3,7 +3,7 @@ import subprocess
 import time
 import json
 from getpass import getpass
-# from multiprocessing import Pool, Process
+from pySmartDL import SmartDL as sdl
 
 
 filetypes = [".pdf", ".doc", ".docx", ".xls", ".xlsx", ".jpg", ".png",
@@ -69,27 +69,39 @@ def c_downloader(download, p):
         return
     for link in br.links():
         if ".pdf" in link.text.lower():
-            downloadlink(link, p)
+            downloadlink(link, p, False, True)
         elif " File" in link.text:
-            downloadlink(link, p, False)
+            downloadlink(link, p, False, False)
 
 
-def downloadlink(l, po, select=True):
+def downloadlink(l, po, select=True, file=None):
     global c
     if not l.text:
         return
-    if select:
-        if po[-1] == '\\':
-            f = open(po + l.text, "wb")
+    if not select:
+        if file:
+            if po[-1] == '\\':
+                f = open(po + l.text, "wb")
+            else:
+                f = open(po + '\\' + l.text, "wb")
         else:
-            f = open(po + '\\' + l.text, "wb")
-    else:
-        n = len(l.text)
-        f = open(po + '\\' + l.text[:n-5] + ".pdf", "wb")
+            n = len(l.text)
+            f = open(po + '\\' + l.text[:n-5] + ".pdf", "wb")
     try:
-        br.open(l.absolute_url)
-        f.write(br.response().read())
-        print(l.text + " downloaded")
+        if not select:
+            br.open(l.absolute_url)
+            f.write(br.response().read())
+            print(l.text + " downloaded")
+        else:
+            print()
+            url = l.absolute_url
+            print(l.text)
+            obj = sdl(url, po)
+            obj.start()
+            print()
+            print('='*100)
+            print()
+
         c = c + 1
     except Exception as e:
         if "b'" in e:
@@ -166,7 +178,7 @@ if __name__ == '__main__':
     print("Note: it won't download embedded PDF file of courses.")
     print("\n\n")
     select = input(
-        "Intranet or Courses (i) for intranet and 'c' for courses ") or 'i'
+        "Intranet or Courses (i) for intranet and (c) for courses ") or 'i'
     if select.lower() == 'c':
         try:
             with open("pass.json", "r") as f:
@@ -177,7 +189,8 @@ if __name__ == '__main__':
             a = {}
             b = {}
             print("You just has to enter username and password for once!")
-            print("Your password will be stored in 'pass.json' in encrypted format.")
+            print("Your password will be stored in 'pass.json' \
+                   in encrypted format.")
             a["username"] = input("enter your student id: ")
             a["password"] = getpass()
             with open("pass.json", "w") as f:
