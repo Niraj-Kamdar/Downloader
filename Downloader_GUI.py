@@ -10,6 +10,7 @@ from kivy.utils import platform
 from kivy.uix.gridlayout import GridLayout
 from multiprocessing import Pipe, Process
 from kivy.clock import Clock
+from pySmartDL import SmartDL
 import webbrowser
 import mechanize
 import subprocess
@@ -83,7 +84,7 @@ def main(conn, select, download, path, username=None, password=None):
             br.open(download)
         except Exception as e:
             print(e)
-            conn.send("error"+str(e))
+            conn.send("error"+str(e)+"\n")
             return
         myfiles = []
         mydir = []
@@ -117,35 +118,77 @@ def main(conn, select, download, path, username=None, password=None):
             br.open(download)
         except Exception as e:
             print(e)
-            conn.send("error"+str(e))
+            conn.send("error"+str(e)+"\n")
+            # return
         for link in br.links():
             if ".pdf" in link.text.lower():
                 print(link.text)
-                downloadlink(link, p)
+                downloadlink(link, p, False, True)
             elif " File" in link.text:
-                downloadlink(link, p, False)
+                downloadlink(link, p, False, False)
 
-    def downloadlink(l, po, select=True):
+    def downloadlink(l, po, select=True, file=None):
         if not l.text:
             return
-        if select:
-            if po[-1] == '\\':
-                f = open(po + l.text, "wb")
+        if not select:
+            if file:
+                if po[-1] == '\\':
+                    f = open(po + l.text, "wb")
+                else:
+                    f = open(po + '\\' + l.text, "wb")
             else:
-                f = open(po + '\\' + l.text, "wb")
-        else:
-            n = len(l.text)
-            f = open(po + '\\' + l.text[:n-5] + ".pdf", "wb")
+                n = len(l.text)
+                f = open(po + '\\' + l.text[:n-5] + ".pdf", "wb")
         try:
-            br.open(l.absolute_url)
-            f.write(br.response().read())
-            print(l.text + " downloaded")
-            conn.send(l.text + " downloaded")
-            return
+            if not select:
+                br.open(l.absolute_url)
+                f.write(br.response().read())
+                print(l.text + " downloaded")
+                conn.send(l.text + " downloaded\n")
+            else:
+                print(l.text)
+                conn.send(l.text + "\n")
+                obj = SmartDL(l.absolute_url, po, progress_bar=False)
+                obj.start(blocking=False)
+                conn.send("new")
+                while not obj.isFinished():
+                    # complete = False
+                    speed = obj.get_speed(human=True)
+                    dl_size = obj.get_dl_size(human=True)
+                    total_size = obj.get_final_filesize(human=True)
+                    eta = obj.get_eta(human=True)
+                    progress = obj.get_progress_bar(length=20)
+                    d_state = "[*] {0}//{1} @ {2} {3}   ETA: {4}\n".format(dl_size,
+                                                                           total_size,
+                                                                           speed,
+                                                                           progress,
+                                                                           eta)
+                    conn.send(d_state)
+                    time.sleep(0.2)
+
+                if obj.isSuccessful():
+                    conn.send("finish")
+                    dl_time = obj.get_dl_time(human=False)
+                    conn.send(
+                        l.text + " downloaded successfully in {}s\n".format(dl_time))
+                else:
+                    conn.send("finish")
+                    print("There were some errors:")
+                    conn.send("There were some errors:\n")
+                    for e in obj.get_errors():
+                        print(str(e))
+                        conn.send(str(e)+"\n")
+                conn.send("\n\n\n")
+                return
         except Exception as e:
             print(e)
-            conn.send("error"+str(e))
+            conn.send("error"+str(e)+"\n")
             return
+
+    print("Mass download files and folders from Intranet and Courses")
+    print("Note: if you enter wrong password for courses it won't download.")
+    print("Note: To reset password delete 'pass.json' file.")
+    print("Note: it won't download embedded PDF file of courses.")
 
     if select == 'c':
         br.open("https://courses.daiict.ac.in/login/index.php")
@@ -154,10 +197,10 @@ def main(conn, select, download, path, username=None, password=None):
         br.form['password'] = password
         br.submit()
         print("you have succesfully login into your account.")
-        conn.send("you have succesfully login into your account.")
+        conn.send("you have succesfully login into your account.\n")
 
     print("please wait if you don't see any error it's downloading.")
-    conn.send("please wait if you don't see any error it's downloading.")
+    conn.send("please wait if you don't see any error it's downloading.\n")
 
     t1 = time.perf_counter()
     if select != 'c':
@@ -171,6 +214,8 @@ def main(conn, select, download, path, username=None, password=None):
 
     print("{}".format(round(t2-t1, 2)))
     conn.send("end")
+    # conn.send("end")
+    # print("Created by ALPHA")
     return
 
 
@@ -315,10 +360,11 @@ Builder.load_string('''
     Label:
         id: newtext
         text: ""
-        font_size: (root.width**2 + root.height**2) / 14**4
+        font_size: 18
         text_size: self.width, None
         size_hint_y: None
         height: self.texture_size[1]
+
 <HelpPage>:
     rows: 2
     padding: 8
@@ -387,6 +433,7 @@ class Downloading(ScrollView):
         self.path = path
         self.username = username
         self.password = password
+        self.downloading = False
 
         self.parent_conn, self.child_conn = Pipe()
 
@@ -397,18 +444,31 @@ class Downloading(ScrollView):
 
         super().__init__()
 
-        self.event = Clock.schedule_interval(self.download_GUI, 1)
+        self.event = Clock.schedule_interval(self.download_GUI, 0.1)
 
     def download_GUI(self, a):
 
         temp = self.parent_conn.recv()
 
         print(temp)
+        if temp == "new":
+            self.pretext = self.set_text.text
+            self.downloading = True
+            return
+        if temp == "finish":
+            self.downloading = False
+            return
+        if self.downloading:
+            self.set_text.text = self.pretext + temp
+            print(self.set_text.text)
+            return
         if temp == "end":
             self.event.cancel()
             Clock.schedule_once(exit, 3)
+            return
         else:
-            self.set_text.text += temp + '\n'
+            self.set_text.text += temp
+            return
 
 
 class Widgets(GridLayout):
@@ -462,6 +522,7 @@ class Widgets(GridLayout):
         def _fbrowser_success(instance):
             print(instance.selection)
             self.set_path.text = instance.selection[0]
+            # self.path.insert_text(self, substring=instance.selection[0])
             popupWindow.dismiss()
 
         def _fbrowser_canceled(instance):
