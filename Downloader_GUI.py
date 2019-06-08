@@ -1,11 +1,12 @@
-import kivy
 from kivy.app import App
 from kivy.properties import ObjectProperty
+from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 from kivy.uix.scrollview import ScrollView
 from kivy.lang import Builder
 from kivy.uix.gridlayout import GridLayout
 from multiprocessing import Pipe, Process, freeze_support
+from kivy.uix.progressbar import ProgressBar
 from kivy.clock import Clock
 from pySmartDL import SmartDL
 import webbrowser
@@ -15,6 +16,7 @@ import time
 import json
 import ctypes
 import os
+import kivy
 import sys
 
 
@@ -82,7 +84,6 @@ def main(conn, select, download, path, username=None, password=None):
             br.open(download)
         except Exception as e:
             print(e)
-            conn.send("error"+str(e)+"\n")
             return
         myfiles = []
         mydir = []
@@ -116,6 +117,7 @@ def main(conn, select, download, path, username=None, password=None):
             br.open(download)
         except Exception as e:
             print(e)
+            conn.send("new")
             conn.send("error"+str(e)+"\n")
             # return
         for link in br.links():
@@ -142,51 +144,39 @@ def main(conn, select, download, path, username=None, password=None):
                 br.open(l.absolute_url)
                 f.write(br.response().read())
                 print(l.text + " downloaded")
+                conn.send("new")
                 conn.send(l.text + " downloaded\n")
             else:
+                conn.send("new")
                 print(l.text)
-                conn.send(l.text + "\n")
+                conn.send(l.text)
                 obj = SmartDL(l.absolute_url, po, progress_bar=False)
                 obj.start(blocking=False)
-                conn.send("new")
                 while not obj.isFinished():
-                    # complete = False
-                    speed = obj.get_speed(human=True)
-                    dl_size = obj.get_dl_size(human=True)
-                    total_size = obj.get_final_filesize(human=True)
-                    eta = obj.get_eta(human=True)
-                    progress = obj.get_progress_bar(length=20)
-                    d_state = "[*] {0}//{1} @ {2} {3}   ETA: {4}\n".format(dl_size,
-                                                                           total_size,
-                                                                           speed,
-                                                                           progress,
-                                                                           eta)
+                    d_state = {}
+                    d_state['complete'] = False
+                    d_state['speed'] = obj.get_speed(human=True)
+                    d_state['dl_size'] = obj.get_dl_size(human=True)
+                    d_state['total_size'] = obj.get_final_filesize(human=True)
+                    d_state['eta'] = obj.get_eta(human=True)
+                    d_state['progress'] = obj.get_progress()*100
                     conn.send(d_state)
                     time.sleep(0.2)
 
                 if obj.isSuccessful():
-                    conn.send("finish")
-                    dl_time = obj.get_dl_time(human=False)
-                    conn.send(
-                        "file downloaded successfully in {}s\n".format(dl_time))
+                    d_state = {}
+                    d_state['complete'] = True
+                    d_state['total_size'] = obj.get_final_filesize(human=True)
+                    conn.send(d_state)
                 else:
-                    conn.send("finish")
                     print("There were some errors:")
-                    conn.send("There were some errors:\n")
                     for e in obj.get_errors():
                         print(str(e))
-                        conn.send(str(e)+"\n")
-                conn.send("\n\n\n")
                 return
         except Exception as e:
             print(e)
-            conn.send("error"+str(e)+"\n")
+            # conn.send("error"+str(e))
             return
-
-    print("Mass download files and folders from Intranet and Courses")
-    print("Note: if you enter wrong password for courses it won't download.")
-    print("Note: To reset password delete 'pass.json' file.")
-    print("Note: it won't download embedded PDF file of courses.")
 
     if select == 'c':
         br.open("https://courses.daiict.ac.in/login/index.php")
@@ -195,10 +185,15 @@ def main(conn, select, download, path, username=None, password=None):
         br.form['password'] = password
         br.submit()
         print("you have succesfully login into your account.")
-        conn.send("you have succesfully login into your account.\n")
+        conn.send("new")
+        conn.send("you have succesfully login into your account.")
+        conn.send("new")
+        conn.send("Sometimes downloading from courses takes too much time.")
+        conn.send("new")
+        conn.send("So,please wait even if it says Not responding")
 
     print("please wait if you don't see any error it's downloading.")
-    conn.send("please wait if you don't see any error it's downloading.\n")
+    # conn.send("please wait if you don't see any error it's downloading.")
 
     t1 = time.perf_counter()
     if select != 'c':
@@ -354,14 +349,12 @@ Builder.load_string('''
             text: ''
 
 <Downloading>:
-    set_text: newtext
-    Label:
-        id: newtext
-        text: ""
-        font_size: 18
-        text_size: self.width, None
-        size_hint_y: None
-        height: self.texture_size[1]
+    my_grid: mygrid
+    GridLayout:
+        cols: 1
+        size_hint_y : None
+        height: self.minimum_height
+        id: mygrid
 
 <HelpPage>:
     rows: 2
@@ -411,7 +404,8 @@ class HelpPage(GridLayout):
                       "\nYou can reset your password anytime " +
                       "using login button.\n" +
                       "If you find any bug or error in the App " +
-                      "you can email me on 201701184@daiict.ac.in")
+                      "you can email me on 201701184@daiict.ac.in\n\n"
+                      "Note: support for courses is in Beta stage")
 
         super().__init__()
 
@@ -422,7 +416,8 @@ class HelpPage(GridLayout):
 
 
 class Downloading(ScrollView):
-    set_text = ObjectProperty()
+
+    my_grid = ObjectProperty()
 
     def __init__(self, select, link, path, username, password):
 
@@ -431,8 +426,9 @@ class Downloading(ScrollView):
         self.path = path
         self.username = username
         self.password = password
+        self.p_bar = []
+        self.stat = []
         self.downloading = False
-
         self.parent_conn, self.child_conn = Pipe()
 
         p = Process(target=main, args=(self.child_conn, self.select,
@@ -443,30 +439,74 @@ class Downloading(ScrollView):
         super().__init__()
 
         self.event = Clock.schedule_interval(self.download_GUI, 0.1)
+        self.my_grid.bind(minimum_height=self.my_grid.setter('height'))
+
+    def newFile(self, title):
+        self.stat.append(Label(text='', size_hint=(1, None), height=30))
+        self.p_bar.append(ProgressBar())
+        self.my_grid.add_widget(
+            Label(text=title, size_hint=(1, None), height=30))
+        self.my_grid.add_widget(self.stat[-1])
+        self.my_grid.add_widget(self.p_bar[-1])
 
     def download_GUI(self, a):
 
-        temp = self.parent_conn.recv()
+        if self.select != 'c':
 
-        print(temp)
-        if temp == "new":
-            self.pretext = self.set_text.text
-            self.downloading = True
-            return
-        if temp == "finish":
-            self.downloading = False
-            return
-        if self.downloading:
-            self.set_text.text = self.pretext + temp
-            print(self.set_text.text)
-            return
-        if temp == "end":
-            self.event.cancel()
-            Clock.schedule_once(exit, 3)
-            return
+            temp = self.parent_conn.recv()
+
+            print(temp)
+
+            if temp == "new":
+                self.downloading = True
+                return
+            if self.downloading:
+                self.newFile(temp)
+                self.downloading = False
+                return
+            if isinstance(temp, dict):
+                self.complete = temp['complete']
+                if not self.complete:
+                    status = "{0}/{1} @ {2}  ETA: {3}".format(temp['dl_size'],
+                                                              temp['total_size'],
+                                                              temp['speed'],
+                                                              temp['eta'])
+                    self.stat[-1].text = status
+                    self.p_bar[-1].value = temp['progress']
+                    return
+                final = temp['total_size']
+                status = "{0}/{1}   {2}  ETA: {3}".format(
+                    final, final, '', '0s')
+                self.stat[-1].text = status
+                self.p_bar[-1].value = 100
+                return
+            if temp == "end":
+                self.event.cancel()
+                # Clock.schedule_once(exit, 5)
+                self.close()
         else:
-            self.set_text.text += temp
-            return
+
+            temp = self.parent_conn.recv()
+            print(temp)
+            if temp == "end":
+                self.event.cancel()
+                # Clock.schedule_once(exit, 5)
+                self.close()
+            if temp == 'new':
+                self.downloading = True
+                self.set_text = Label(text="",
+                                      font_size=18,
+                                      size_hint=(1, None),
+                                      height=30)
+                self.my_grid.add_widget(self.set_text)
+                return
+            if self.downloading:
+                self.set_text.text = temp
+                self.downloading = False
+                return
+
+    def close(self):
+        print("closing self")
 
 
 class Widgets(GridLayout):
@@ -505,10 +545,15 @@ class Widgets(GridLayout):
 
     def downloader(self):
 
+        def close_popup():
+
+            popupWindow.dismiss()
+
         path = self.set_path.text
         link = self.set_link.text
         d_popup = Downloading(self.select, link, path,
                               self.username, self.password)
+        d_popup.close = close_popup
 
         popupWindow = Popup(title="Downloading...",
                             content=d_popup,
@@ -516,9 +561,6 @@ class Widgets(GridLayout):
         popupWindow.open()
 
     def show_popup(self):
-        ''' application crashes while using kivy.garden.filebrowser,
-            so,reverting back to windows filebrowser '''
-
         if os.name == 'nt':
             subprocess.Popen(r'explorer /select,"C:\"')
         else:
@@ -542,10 +584,13 @@ class Widgets(GridLayout):
 
             prefix = '.' if os.name != 'nt' else ''
             file_name = prefix + file_name
-
-            with open(file_name, 'w') as f:
-                json.dump(data, f)
-
+            try:
+                with open(file_name, 'w') as f:
+                    json.dump(data, f)
+            except Exception:
+                os.remove(file_name)
+                with open(file_name, 'w') as f:
+                    json.dump(data, f)
             if os.name == 'nt':
                 ret = ctypes.windll.kernel32.SetFileAttributesW(file_name,
                                                                 HIDDEN)
@@ -571,15 +616,13 @@ class Widgets(GridLayout):
 
         help_page.close_help = close_popup
 
-        popupWindow = Popup(title="Login credential for courses",
+        popupWindow = Popup(title="Help",
                             content=help_page,
                             size_hint=(0.8, 0.8))
         popupWindow.open()
 
 
 def resourcePath():
-    '''Returns path containing content -
-       either locally or in pyinstaller tmp file'''
     if hasattr(sys, '_MEIPASS'):
         return os.path.join(sys._MEIPASS)
 
@@ -593,5 +636,5 @@ class DownloaderApp(App):
 
 if __name__ == "__main__":
     freeze_support()
-    kivy.resources.resource_add_path(resourcePath())
+    kivy.resources.resource_add_path(resourcePath())  # add this line
     DownloaderApp().run()
