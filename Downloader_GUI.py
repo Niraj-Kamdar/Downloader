@@ -514,11 +514,13 @@ class Widgets(GridLayout):
     set_link = ObjectProperty()
     set_select = ObjectProperty()
     select = 'i'
+    # you have to set this key first in your environment variable
+    key = os.environ.get('DECRYPT_KEY')
     try:
         with open("password.json", "r") as f:
             saved_data = json.load(f)
-        username = decrypter(saved_data['username'], '836')
-        password = decrypter(saved_data['password'], '836')
+        username = decrypter(saved_data['username'], key)
+        password = decrypter(saved_data['password'], key)
     except Exception:
         username = None
         password = None
@@ -577,8 +579,9 @@ class Widgets(GridLayout):
         def write_hidden():
 
             data = {}
-            data['username'] = encrypter(self.username, '836')
-            data['password'] = encrypter(self.password, '836')
+
+            data['username'] = encrypter(self.username, self.key)
+            data['password'] = encrypter(self.password, self.key)
             HIDDEN = 0x02
             file_name = "password.json"
 
