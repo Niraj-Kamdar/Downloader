@@ -1,5 +1,5 @@
 # Downloader
-This is a windows application(written in python) which can mass download files or directories from internet. Download compiled binary file from [here](/releases/download/v0.1/Downloader_0.1.exe)
+This is a windows application(written in python) which can mass download files or directories from internet. Download compiled binary file from [here](https://github.com/Niraj-Kamdar/Downloader/releases/download/v0.1/Downloader_0.1.exe)
 
 ## Getting Started
 These instructions will get you a copy of the project up and running on your local machine for development and testing purposes. See deployment for notes on how to deploy the project on a Windows system.
