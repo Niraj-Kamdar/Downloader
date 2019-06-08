@@ -9,6 +9,7 @@ from multiprocessing import Pipe, Process, freeze_support
 from kivy.uix.progressbar import ProgressBar
 from kivy.clock import Clock
 from pySmartDL import SmartDL
+from validator_collection import checkers
 import webbrowser
 import mechanize
 import subprocess
@@ -316,11 +317,11 @@ Builder.load_string('''
         Label:
             text: 'Username:'
             size_hint: (0.20,1)
-            font_size: (root.width**2 + root.height**2) / 14**4
+            font_size: max((root.width**2 + root.height**2) / 14**4, 18)
         TextInput:
             id: username
             multiline: False
-            font_size: (root.width**2 + root.height**2) / 14**4
+            font_size: max((root.width**2 + root.height**2) / 14**4, 18)
     BoxLayout:
         orientation: 'horizontal'
         size_hint: (1,0.30)
@@ -328,11 +329,11 @@ Builder.load_string('''
         Label:
             text: 'Password:'
             size_hint: (0.20,1)
-            font_size: (root.width**2 + root.height**2) / 14**4
+            font_size: max((root.width**2 + root.height**2) / 14**4, 18)
         TextInput:
             id: password
             multiline: False
-            font_size: (root.width**2 + root.height**2) / 14**4
+            font_size: max((root.width**2 + root.height**2) / 14**4, 18)
             password: True
     BoxLayout:
         orientation: 'horizontal'
@@ -344,7 +345,7 @@ Builder.load_string('''
             on_release: root.on_submit()
             size_hint: (0.70,0.20)
             pos_hint: ({'x':self.x,'y':0.6})
-            font_size: (root.width**2 + root.height**2) / 14**4
+            font_size: max((root.width**2 + root.height**2) / 14**4, 20)
         Label:
             text: ''
 
@@ -377,6 +378,69 @@ Builder.load_string('''
             size_hint: (0.70,0.20)
             pos_hint: ({'x':self.x,'y':0.6})
             font_size: 20
+        Label:
+            text: ''
+<ValidUser>:
+    rows: 2
+    padding: 8
+    Label:
+        text: "Please Enter valid username and password"
+        font_size: 18
+        text_size: self.width, None
+        size_hint_y: None
+        height: self.texture_size[1]
+    BoxLayout:
+        orientation: 'horizontal'
+        padding: 5
+        Label:
+            text: ''
+        Button:
+            text: "Okay"
+            on_release: root.close_btn()
+            size_hint: (0.80,0.65)
+            font_size: 18
+        Label:
+            text: ''
+<ValidUrl>:
+    rows: 2
+    padding: 8
+    Label:
+        text: "Please Enter valid URL"
+        font_size: 18
+        text_size: self.width, None
+        size_hint_y: None
+        height: self.texture_size[1]
+    BoxLayout:
+        orientation: 'horizontal'
+        padding: 5
+        Label:
+            text: ''
+        Button:
+            text: "Okay"
+            on_release: root.close_btn()
+            size_hint: (0.75,0.45)
+            font_size: 19
+        Label:
+            text: ''
+<ValidPath>:
+    rows: 2
+    padding: 8
+    Label:
+        text: "Please Enter valid directory path"
+        font_size: 18
+        text_size: self.width, None
+        size_hint_y: None
+        height: self.texture_size[1]
+    BoxLayout:
+        orientation: 'horizontal'
+        padding: 5
+        Label:
+            text: ''
+        Button:
+            text: "Okay"
+            on_release: root.close_btn()
+            size_hint: (0.75,0.45)
+            font_size: 19
         Label:
             text: ''
 ''')
@@ -413,6 +477,18 @@ class HelpPage(GridLayout):
 
     def close_help(self):
         pass
+
+
+class ValidUser(GridLayout):
+    pass
+
+
+class ValidUrl(GridLayout):
+    pass
+
+
+class ValidPath(GridLayout):
+    pass
 
 
 class Downloading(ScrollView):
@@ -553,14 +629,37 @@ class Widgets(GridLayout):
 
         path = self.set_path.text
         link = self.set_link.text
-        d_popup = Downloading(self.select, link, path,
-                              self.username, self.password)
-        d_popup.close = close_popup
+        if checkers.is_directory(path) and checkers.is_url(link):
+            d_popup = Downloading(self.select, link, path,
+                                  self.username, self.password)
+            d_popup.close = close_popup
 
-        popupWindow = Popup(title="Downloading...",
-                            content=d_popup,
-                            size_hint=(1, 1))
-        popupWindow.open()
+            popupWindow = Popup(title="Downloading...",
+                                content=d_popup,
+                                size_hint=(1, 1))
+            popupWindow.open()
+        elif checkers.is_directory(path):
+
+            def close_invalid():
+                popup.dismiss()
+
+            invalid = ValidUrl()
+            invalid.close_btn = close_invalid
+            popup = Popup(title="Alert",
+                          content=invalid,
+                          size_hint=(0.4, 0.3))
+            popup.open()
+        else:
+
+            def close_invalid():
+                popup.dismiss()
+
+            invalid = ValidPath()
+            invalid.close_btn = close_invalid
+            popup = Popup(title="Alert",
+                          content=invalid,
+                          size_hint=(0.4, 0.3))
+            popup.open()
 
     def show_popup(self):
         if os.name == 'nt':
@@ -573,8 +672,23 @@ class Widgets(GridLayout):
         def close():
             self.username = login.get_username.text
             self.password = login.get_password.text
-            write_hidden()
-            popupWindow.dismiss()
+            if (self.username.isdigit() and len(self.username) == 9 and
+                    self.password):
+                write_hidden()
+                popupWindow.dismiss()
+            else:
+
+                def close_invalid():
+                    popup.dismiss()
+
+                invalid = ValidUser()
+
+                invalid.close_btn = close_invalid
+
+                popup = Popup(title="Alert",
+                                    content=invalid,
+                                    size_hint=(0.4, 0.3))
+                popup.open()
 
         def write_hidden():
 
