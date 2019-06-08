@@ -9,7 +9,7 @@ from multiprocessing import Pipe, Process, freeze_support
 from kivy.uix.progressbar import ProgressBar
 from kivy.clock import Clock
 from pySmartDL import SmartDL
-from validator_collection import checkers
+from urllib.request import urlopen
 import webbrowser
 import mechanize
 import subprocess
@@ -19,6 +19,14 @@ import ctypes
 import os
 import kivy
 import sys
+
+
+def is_valid_url(url):
+    try:
+        urlopen(url)
+        return True
+    except Exception:
+        return False
 
 
 def encrypter(msg_text, secret_key):
@@ -591,7 +599,8 @@ class Widgets(GridLayout):
     set_select = ObjectProperty()
     select = 'i'
     # you have to set this key first in your environment variable
-    key = os.environ.get('DECRYPT_KEY')
+    # key = os.environ.get('DECRYPT_KEY')
+    key = '628'
     try:
         with open("password.json", "r") as f:
             saved_data = json.load(f)
@@ -629,7 +638,7 @@ class Widgets(GridLayout):
 
         path = self.set_path.text
         link = self.set_link.text
-        if checkers.is_directory(path) and checkers.is_url(link):
+        if (os.path.isdir(path) and is_valid_url(link)):
             d_popup = Downloading(self.select, link, path,
                                   self.username, self.password)
             d_popup.close = close_popup
@@ -638,7 +647,7 @@ class Widgets(GridLayout):
                                 content=d_popup,
                                 size_hint=(1, 1))
             popupWindow.open()
-        elif checkers.is_directory(path):
+        elif os.path.isdir(path):
 
             def close_invalid():
                 popup.dismiss()

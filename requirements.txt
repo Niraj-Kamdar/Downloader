@@ -1,4 +1,3 @@
-validator-collection==1.3.5
 mechanize==0.4.2
 docutils==0.14
 pypiwin32==223
