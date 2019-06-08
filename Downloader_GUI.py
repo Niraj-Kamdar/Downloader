@@ -1,14 +1,11 @@
+import kivy
 from kivy.app import App
 from kivy.properties import ObjectProperty
 from kivy.uix.popup import Popup
 from kivy.uix.scrollview import ScrollView
 from kivy.lang import Builder
-from os.path import sep, expanduser, isdir, dirname, join
-from kivy.garden.filebrowser import FileBrowser
-from kivy.properties import BooleanProperty
-from kivy.utils import platform
 from kivy.uix.gridlayout import GridLayout
-from multiprocessing import Pipe, Process
+from multiprocessing import Pipe, Process, freeze_support
 from kivy.clock import Clock
 from pySmartDL import SmartDL
 import webbrowser
@@ -18,6 +15,7 @@ import time
 import json
 import ctypes
 import os
+import sys
 
 
 def encrypter(msg_text, secret_key):
@@ -170,7 +168,7 @@ def main(conn, select, download, path, username=None, password=None):
                     conn.send("finish")
                     dl_time = obj.get_dl_time(human=False)
                     conn.send(
-                        l.text + " downloaded successfully in {}s\n".format(dl_time))
+                        "file downloaded successfully in {}s\n".format(dl_time))
                 else:
                     conn.send("finish")
                     print("There were some errors:")
@@ -518,36 +516,13 @@ class Widgets(GridLayout):
         popupWindow.open()
 
     def show_popup(self):
+        ''' application crashes while using kivy.garden.filebrowser,
+            so,reverting back to windows filebrowser '''
 
-        def _fbrowser_success(instance):
-            print(instance.selection)
-            self.set_path.text = instance.selection[0]
-            # self.path.insert_text(self, substring=instance.selection[0])
-            popupWindow.dismiss()
-
-        def _fbrowser_canceled(instance):
-            print('cancelled, Close self.')
-
-        def is_dir(directory, filename):
-            return isdir(join(directory, filename))
-
-        if platform == 'win':
-            user_path = dirname(expanduser('~')) + sep + 'Documents'
+        if os.name == 'nt':
+            subprocess.Popen(r'explorer /select,"C:\"')
         else:
-            user_path = expanduser('~') + sep + 'Documents'
-        browser = FileBrowser(select_string='Select',
-                              favorites=[(user_path, 'Documents')],
-                              dirselect=BooleanProperty(False),
-                              filters=[is_dir]
-                              )
-        browser.bind(
-            on_success=_fbrowser_success,
-            on_canceled=_fbrowser_canceled)
-
-        popupWindow = Popup(title="Choose A Directory", content=browser,
-                            size_hint=(1, 1))
-
-        popupWindow.open()
+            pass
 
     def show_login(self):
 
@@ -602,10 +577,21 @@ class Widgets(GridLayout):
         popupWindow.open()
 
 
+def resourcePath():
+    '''Returns path containing content -
+       either locally or in pyinstaller tmp file'''
+    if hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS)
+
+    return os.path.join(os.path.abspath("."))
+
+
 class DownloaderApp(App):
     def build(self):
         return Widgets()
 
 
 if __name__ == "__main__":
+    freeze_support()
+    kivy.resources.resource_add_path(resourcePath())
     DownloaderApp().run()
