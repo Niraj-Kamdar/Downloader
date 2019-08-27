@@ -85,8 +85,12 @@ def downloadlink(l, po, select=True, file=None):
             else:
                 f = open(po + '\\' + l.text, "wb")
         else:
-            n = len(l.text)
-            f = open(po + '\\' + l.text[:n-5] + ".pdf", "wb")
+            br.open(l.absolute_url)
+            for i in br.links():
+                if ".pdf" in i.text:
+                    l = i
+                    break
+            f = open(po + '\\' + l.text, "wb")
     try:
         if not select:
             br.open(l.absolute_url)
