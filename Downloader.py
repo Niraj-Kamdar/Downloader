@@ -4,6 +4,7 @@ import time
 import json
 from getpass import getpass
 from pySmartDL import SmartDL as sdl
+import asyncio
 
 
 filetypes = [".pdf", ".doc", ".docx", ".xls", ".xlsx", ".jpg", ".png",
@@ -38,8 +39,9 @@ def downloader(download, p):
             if link.text[-1] == "/":
                 if link.text[-2] != '.':
                     mydir.append(link)
-    for link in myfiles:
-        downloadlink(link, p)
+
+    asyncio.run(adwnd(myfiles, p))
+
     for link in mydir:
         n = len(link.text)
         try:
@@ -52,7 +54,7 @@ def downloader(download, p):
                    p + '\\' + link.text[:n-1])
 
 
-def c_downloader(download, p):
+async def c_downloader(download, p):
     global filetypes
     try:
         br.open(download)
@@ -69,12 +71,17 @@ def c_downloader(download, p):
         return
     for link in br.links():
         if ".pdf" in link.text.lower():
-            downloadlink(link, p, False, True)
+            await downloadlink(link, p, False, True)
         elif " File" in link.text:
-            downloadlink(link, p, False, False)
+            await downloadlink(link, p, False, False)
 
 
-def downloadlink(l, po, select=True, file=None):
+async def adwnd(myfiles, p):
+    for link in myfiles:
+        await downloadlink(link, p)
+
+
+async def downloadlink(l, po, select=True, file=None):
     global c
     if not l.text:
         return
@@ -216,7 +223,7 @@ if __name__ == '__main__':
     if select.lower() != 'c':
         downloader(download, path)
     else:
-        c_downloader(download, path)
+        asyncio.run(c_downloader(download, path))
     t2 = time.perf_counter()
     print("\n\n")
     print("{} files downloaded in {} seconds!".format(c, round(t2 - t1, 2)))
